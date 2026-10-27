@@ -1,0 +1,29 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Litoral GBA · laboratório Codespaces</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#061329;color:#f5fbff}*{box-sizing:border-box}body{margin:0;padding:18px;max-width:1040px;margin:auto}header{display:flex;align-items:center;gap:14px;flex-wrap:wrap}h1{font-size:22px;margin:0}small{color:#a2c4df}.panel{background:#0b2240;border:1px solid #285778;border-radius:12px;padding:16px;margin-top:15px}label{display:block;font-size:13px;color:#b6d5eb;margin-bottom:5px}input{width:100%;background:#051122;border:1px solid #3e799d;color:white;padding:11px;border-radius:7px}button{border:1px solid #45b7db;background:#12618a;border-radius:7px;padding:10px 16px;color:white;font-weight:600;cursor:pointer}button[disabled]{opacity:.5;cursor:default}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.game{margin:15px auto;background:#000;aspect-ratio:3/2;max-width:900px;width:100%;border:3px solid #3f9dc7;border-radius:8px;display:block;image-rendering:pixelated}#status{padding:10px;border-left:3px solid #40bce8;background:#071d36;margin:12px 0}#stats{white-space:pre-wrap;color:#9ed9ec;font-variant-numeric:tabular-nums}kbd{border:1px solid #4e7598;padding:2px 6px;border-radius:4px;color:#d1ebff}footer{font-size:12px;line-height:1.6;color:#9abbd3}a{color:#78d1fb}
+</style></head><body>
+<header><h1>🎮 Litoral GBA · teste de emulação remota</h1><small>mGBA nativo em GitHub Codespaces · nenhuma emulação no navegador</small></header>
+<section class="panel"><label for="token">Chave de teste (em <code>gba_host/.env</code> no Codespaces)</label>
+<div class="row"><input id="token" type="password" autocomplete="off" placeholder="Cole GBA_TOKEN (somente laboratório)" style="flex:1;min-width:250px"><button id="connect">Conectar e jogar</button><button id="disconnect" disabled>Desconectar</button><button id="reset" disabled>Reiniciar jogo</button></div>
+<div id="status">Aguardando conexão. No Codespaces, a porta 8765 precisa estar encaminhada.</div>
+<div id="stats">Taxa de emulação: -- | Quadros recebidos: --</div>
+</section>
+<canvas class="game" id="screen" width="240" height="160"></canvas>
+<section class="panel"><strong>Controles</strong><p>Setas: movimentar · <kbd>Z</kbd> A · <kbd>X</kbd> B · <kbd>Enter</kbd> Start · <kbd>Shift</kbd> Select · <kbd>A</kbd> L · <kbd>S</kbd> R. Clique no jogo para manter o foco.</p><small>Um jogador conectado por vez. A taxa de quadros recebidos por internet não é a taxa da CPU emulada.</small></section>
+<footer>Não use essa porta pública como um serviço permanente. A chave fica visível ao administrador e o Codespaces pode parar por inatividade. A ROM é adicionada separadamente, não é publicada no GitHub.</footer>
+<script>
+(function(){'use strict';
+var el=document.getElementById.bind(document),screen=el('screen'),ctx=screen.getContext('2d');
+var ws=null,mask=0,frames=0,rate=0,last=performance.now(),decoding=false,newest=null,coreRate=0,hostRate=0;
+var keys={KeyX:0,ShiftLeft:2,ShiftRight:2,Enter:3,ArrowUp:4,ArrowDown:5,ArrowLeft:6,ArrowRight:7,KeyZ:8,KeyA:10,KeyS:11};
+function status(m){el('status').textContent=m;}
+function buttons(connected){el('connect').disabled=connected;el('disconnect').disabled=!connected;el('reset').disabled=!connected;}
+function metrics(){el('stats').textContent='Emulação nativa: '+coreRate+' retro_run/s (meta ~59,7) | Vídeo servidor: '+hostRate+' FPS | Vídeo recebido: '+rate.toFixed(1)+' FPS';}
+function input(){if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:'input',mask:mask}));}
+function onKey(e,pressed){var bit=keys[e.code];if(bit===undefined)return;e.preventDefault();var next=pressed?(mask|(1<<bit)):(mask&~(1<<bit));if(next!==mask){mask=next;input();}}
+addEventListener('keydown',e=>onKey(e,true));addEventListener('keyup',e=>onKey(e,false));addEventListener('blur',()=>{mask=0;input();});
+setInterval(input,150);
+function frame(){if(decoding||!newest)return;decoding=true;var blob=newest;newest=null,url=URL.createObjectURL(blob),image=new Image();image.onload=function(){ctx.drawImage(image,0,0,240,160);URL.revokeObjectURL(url);decoding=false;frames++;var now=performance.now();if(now-last>=1000){rate=frames*1000/(now-last);frames=0;last=now;metrics();}frame();};image.onerror=function(){URL.revokeObjectURL(url);decoding=false;frame();};image.src=url;}
+el('connect').onclick=function(){var token=el('token').value.trim();if(token.length<24){status('Chave inválida: precisa ser GBA_TOKEN do Codespaces.');return;}var scheme=location.protocol==='https:'?'wss:':'ws:';buttons(true);status('Conectando ao mGBA nativo...');try{ws=new WebSocket(scheme+'//'+location.host+'/play',['gba-v1','gba-key-'+token]);ws.binaryType='blob';ws.onopen=function(){status('Conectado. Use Z/X/Setas/Enter para jogar.');mask=0;input();};ws.onmessage=function(evt){if(typeof evt.data==='string'){try{var d=JSON.parse(evt.data);if(d.type==='stats'){coreRate=d.runRate;hostRate=d.streamFps;metrics();}}catch(e){}return;}if(evt.data instanceof Blob&&evt.data.size<100000){newest=evt.data;frame();}};ws.onerror=function(){status('Conexão recusada ou indisponível. Verifique chave, porta pública e serviço ativo.');};ws.onclose=function(evt){buttons(false);mask=0;status('Desconectado (código '+evt.code+').');};}catch(e){buttons(false);status(e.message);}};
+el('disconnect').onclick=function(){if(ws)ws.close();};el('reset').onclick=function(){if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:'reset'}));};metrics();})();
+</script></body></html>

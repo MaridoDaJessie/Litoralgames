@@ -1,0 +1,2 @@
+Arraste a ROM .gba fornecida pelo usuário para esta pasta no Codespaces e renomeie para super-mario-advance-4.gba.
+NÃO execute git add -f nem publique ROMs no repositório. O .gitignore bloqueia *.gba.

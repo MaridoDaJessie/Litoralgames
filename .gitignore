@@ -1,0 +1,13 @@
+# NEVER publish ROMs or generated console state
+*.gba
+*.gb
+*.gbc
+*.sav
+*.srm
+*.state
+*.bak
+.env
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
